@@ -540,11 +540,50 @@ let currentStatus='';
 async function api(params){
   setSS('loading','กำลังโหลด...');
   try{
-    const r=await fetch(API+'?'+new URLSearchParams(params));
-    const d=await r.json();
+    const url=API+'?'+new URLSearchParams(params).toString();
+    const r=await fetch(url,{redirect:'follow'});
+    const text=await r.text();
+    const d=JSON.parse(text);
     setSS('ok','เชื่อมต่อแล้ว');
     return d;
-  }catch(e){setSS('error','เชื่อมต่อไม่ได้');toast('ไม่สามารถเชื่อมต่อได้','error');return null;}
+  }catch(e){
+    try{
+      const d=await jsonpCall(params);
+      setSS('ok','เชื่อมต่อแล้ว');
+      return d;
+    }catch(e2){
+      setSS('error','เชื่อมต่อไม่ได้');
+      toast('เชื่อมต่อไม่ได้: '+e.message,'error');
+      return null;
+    }
+  }
+}
+
+function jsonpCall(params){
+  return new Promise((resolve,reject)=>{
+    const cbName='cb_'+Date.now();
+    const script=document.createElement('script');
+    const url=API+'?'+new URLSearchParams({...params,callback:cbName}).toString();
+    window[cbName]=(data)=>{
+      delete window[cbName];
+      try{document.head.removeChild(script);}catch(e){}
+      resolve(data);
+    };
+    script.onerror=()=>{
+      delete window[cbName];
+      try{document.head.removeChild(script);}catch(e){}
+      reject(new Error('JSONP failed'));
+    };
+    script.src=url;
+    document.head.appendChild(script);
+    setTimeout(()=>{
+      if(window[cbName]){
+        delete window[cbName];
+        try{document.head.removeChild(script);}catch(e){}
+        reject(new Error('Timeout'));
+      }
+    },15000);
+  });
 }
 function setSS(s,t){document.getElementById('sync-dot').className='sync-dot '+s;document.getElementById('sync-text').textContent=t;}
 
