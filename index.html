@@ -149,6 +149,21 @@
   .outsource-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);padding:6px 0;user-select:none}
   .outsource-toggle input{width:16px;height:16px;accent-color:var(--p2);cursor:pointer}
   .outsource-toggle.active{color:var(--p2)}
+  /* COMPLETION PHOTOS */
+  .completion-photos-box{background:var(--p4-bg);border:1px solid var(--p4-border);border-radius:8px;padding:12px;margin-bottom:10px}
+  .completion-photos-title{font-size:11px;font-weight:700;color:var(--p4);margin-bottom:8px;letter-spacing:0.5px;text-transform:uppercase}
+  .photo-upload-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+  .photo-slot{border:2px dashed var(--border);border-radius:8px;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:all 0.15s;background:var(--bg);position:relative;overflow:hidden}
+  .photo-slot:hover{border-color:var(--p4);background:var(--surface2)}
+  .photo-slot.has-photo{border-color:var(--p4);border-style:solid}
+  .photo-slot img{width:100%;height:100%;object-fit:cover;border-radius:6px;position:absolute;inset:0}
+  .photo-slot-label{font-size:10px;color:var(--muted);margin-top:4px}
+  .photo-slot-icon{font-size:20px;opacity:0.4}
+  .photo-slot-remove{position:absolute;top:4px;right:4px;background:var(--p1);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:10}
+  .photo-slot.has-photo .photo-slot-remove{display:flex}
+  .completion-imgs-display{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+  .completion-img-item{border-radius:8px;overflow:hidden;border:1px solid var(--border);aspect-ratio:1}
+  .completion-img-item img{width:100%;height:100%;object-fit:cover}
   /* CANCEL BOX */
   .cancel-box{background:var(--p1-bg);border:1px solid var(--p1-border);border-radius:10px;padding:14px;margin-top:14px}
   .cancel-box-title{font-size:12px;font-weight:700;color:var(--p1);margin-bottom:10px;letter-spacing:0.5px;text-transform:uppercase}
@@ -640,7 +655,10 @@ function openTicket(id){
     const pt=item.parts&&item.parts.length?'<div style="margin-top:3px;font-size:11px;color:var(--muted)">อะไหล่: '+item.parts.map(pp=>pp.name+(pp.qty?' '+pp.qty:'')).join(', ')+'</div>':'';
     const os=item.outsource?`<div style="margin-top:3px;font-size:11px;color:var(--p2)">ช่างภายนอก: ${item.outsource.company||''} ${item.outsource.cost?'| ค่าจ้าง: '+Number(item.outsource.cost).toLocaleString()+' บาท':''}</div>`:'';
     const cancelStyle=item.type==='cancelled'?'color:var(--p1)':'';
-    return `<div class="timeline-item"><div class="timeline-dot ${dc}">${dl}</div><div class="timeline-content"><div class="timeline-meta">${time} &middot; ${item.by||''}</div><div class="timeline-text" style="${cancelStyle}">${item.text||''}</div>${pt}${os}</div></div>`;
+    // รูปภาพส่งมอบงาน
+    const completionImgs=item.completionImages&&item.completionImages.length?
+      `<div class="completion-imgs-display">${item.completionImages.map(url=>`<div class="completion-img-item"><img src="${url}" onerror="this.parentElement.style.display='none'" onclick="window.open('${url}','_blank')"></div>`).join('')}</div>`:'';
+    return `<div class="timeline-item"><div class="timeline-dot ${dc}">${dl}</div><div class="timeline-content"><div class="timeline-meta">${time} &middot; ${item.by||''}</div><div class="timeline-text" style="${cancelStyle}">${item.text||''}</div>${pt}${os}${completionImgs}</div></div>`;
   }).join('');
 
   // Update form
@@ -659,6 +677,30 @@ function openTicket(id){
       <div class="form-group" style="margin-bottom:10px"><label class="form-label">สถานะ</label><div class="status-select-grid">${sg}</div></div>
       <div class="form-group" style="margin-bottom:10px"><label class="form-label">บันทึกการดำเนินงาน</label><textarea class="form-textarea" id="u-note" placeholder="รายละเอียดที่ดำเนินการ" style="min-height:60px"></textarea></div>
       <div class="form-group" style="margin-bottom:10px"><label class="form-label">อะไหล่ที่ใช้ (ถ้ามี)</label><div id="parts-list"></div><button class="add-row-btn" onclick="addPartRow()">+ เพิ่มรายการอะไหล่</button></div>
+      <div class="completion-photos-box" id="completion-photos-box" style="display:none">
+        <div class="completion-photos-title">&#128247; รูปภาพส่งมอบงาน (สูงสุด 3 ภาพ)</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">แนบรูปหลักฐานการซ่อมเสร็จ เพื่อส่งมอบงาน</div>
+        <div class="photo-upload-grid">
+          <div class="photo-slot" id="photo-slot-0" onclick="document.getElementById('photo-input-0').click()">
+            <div class="photo-slot-icon">&#128247;</div>
+            <div class="photo-slot-label">ภาพที่ 1</div>
+            <button class="photo-slot-remove" onclick="removePhoto(event,0)">&#10005;</button>
+            <input type="file" id="photo-input-0" accept="image/*" style="display:none" onchange="handleCompletionPhoto(this,0)">
+          </div>
+          <div class="photo-slot" id="photo-slot-1" onclick="document.getElementById('photo-input-1').click()">
+            <div class="photo-slot-icon">&#128247;</div>
+            <div class="photo-slot-label">ภาพที่ 2</div>
+            <button class="photo-slot-remove" onclick="removePhoto(event,1)">&#10005;</button>
+            <input type="file" id="photo-input-1" accept="image/*" style="display:none" onchange="handleCompletionPhoto(this,1)">
+          </div>
+          <div class="photo-slot" id="photo-slot-2" onclick="document.getElementById('photo-input-2').click()">
+            <div class="photo-slot-icon">&#128247;</div>
+            <div class="photo-slot-label">ภาพที่ 3</div>
+            <button class="photo-slot-remove" onclick="removePhoto(event,2)">&#10005;</button>
+            <input type="file" id="photo-input-2" accept="image/*" style="display:none" onchange="handleCompletionPhoto(this,2)">
+          </div>
+        </div>
+      </div>
       <div class="outsource-box">
         <label class="outsource-toggle" id="outsource-toggle-label"><input type="checkbox" id="u-outsource-check" onchange="toggleOutsource(this)">มีการจ้างช่างภายนอก</label>
         <div id="outsource-fields" style="display:none;margin-top:10px">
@@ -701,8 +743,47 @@ function openTicket(id){
 }
 
 function toggleOutsource(cb){document.getElementById('outsource-fields').style.display=cb.checked?'block':'none';document.getElementById('outsource-toggle-label').className='outsource-toggle'+(cb.checked?' active':'');}
-function selectStatus(el,val){document.querySelectorAll('.status-option').forEach(e=>e.className='status-option');el.classList.add('sel-'+val);window._selectedStatus=val;}
+function selectStatus(el,val){
+  document.querySelectorAll('.status-option').forEach(e=>e.className='status-option');
+  el.classList.add('sel-'+val);
+  window._selectedStatus=val;
+  // แสดงกล่องรูปส่งมอบเฉพาะเมื่อเลือก done
+  const photoBox=document.getElementById('completion-photos-box');
+  if(photoBox) photoBox.style.display=val==='done'?'block':'none';
+}
 function addPartRow(){const list=document.getElementById('parts-list');if(!list)return;const row=document.createElement('div');row.className='parts-row';row.innerHTML=`<input class="form-input" placeholder="ชื่ออะไหล่"><input class="form-input qty" placeholder="จำนวน"><div class="remove-row" onclick="this.parentElement.remove()">&#10005;</div>`;list.appendChild(row);}
+
+let completionPhotoFiles=[null,null,null];
+
+function handleCompletionPhoto(input,index){
+  if(input.files&&input.files[0]){
+    const file=input.files[0];
+    if(file.size>5*1024*1024){showToast('ไฟล์ใหญ่เกิน 5MB','error');return;}
+    completionPhotoFiles[index]=file;
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const slot=document.getElementById('photo-slot-'+index);
+      slot.classList.add('has-photo');
+      // ลบรูปเก่าถ้ามี
+      const oldImg=slot.querySelector('img.preview-img');
+      if(oldImg)oldImg.remove();
+      const img=document.createElement('img');
+      img.src=e.target.result;img.className='preview-img';
+      slot.insertBefore(img,slot.firstChild);
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+function removePhoto(event,index){
+  event.stopPropagation();
+  completionPhotoFiles[index]=null;
+  const slot=document.getElementById('photo-slot-'+index);
+  slot.classList.remove('has-photo');
+  const img=slot.querySelector('img.preview-img');
+  if(img)img.remove();
+  document.getElementById('photo-input-'+index).value='';
+}
 
 async function updateTicket(){
   const t=tickets.find(x=>x.id===currentTicketId);if(!t)return;
@@ -717,7 +798,23 @@ async function updateTicket(){
   const useOutsource=document.getElementById('u-outsource-check')?.checked;
   const outsource=useOutsource?{company:document.getElementById('u-outsource-company')?.value.trim(),cost:document.getElementById('u-outsource-cost')?.value}:null;
   const btn=document.getElementById('update-btn');btn.disabled=true;btn.textContent='กำลังบันทึก...';
-  const params={action:'update',id:t.id,status,note,by:mainTech,mainTech,assistTech,parts:JSON.stringify(parts),outsource:JSON.stringify(outsource)};
+
+  // อัปโหลดรูปส่งมอบงานถ้าเลือก done และมีรูป
+  let completionImages=[];
+  if(status==='done'){
+    const filesToUpload=completionPhotoFiles.filter(f=>f!==null);
+    if(filesToUpload.length>0){
+      btn.textContent='กำลังอัปโหลดรูป...';
+      for(let i=0;i<filesToUpload.length;i++){
+        try{
+          const url=await uploadImageToGDrive(filesToUpload[i],t.id+'_done_'+(i+1));
+          completionImages.push(url);
+        }catch(err){showToast('อัปโหลดรูปที่ '+(i+1)+' ไม่สำเร็จ','error');}
+      }
+    }
+  }
+
+  const params={action:'update',id:t.id,status,note,by:mainTech,mainTech,assistTech,parts:JSON.stringify(parts),outsource:JSON.stringify(outsource),completionImages:JSON.stringify(completionImages)};
   if(currentRole==='mgr'){params.priority=document.getElementById('u-priority')?.value||t.priority;}
   const res=await apiCall(params);btn.disabled=false;btn.textContent='บันทึกการอัปเดต';
   if(res&&res.success){showToast('อัปเดต '+t.id+' เรียบร้อย','success');closeModal();await loadTickets();}
