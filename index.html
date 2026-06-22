@@ -928,4 +928,86 @@ async function saveUpdate(){
     }
   }
 
-  const params={action:'update',id:currentId,status:curre
+  const params={action:'update',id:currentId,status:currentStatus,note,by:mainTech,mainTech,assistTech,parts:JSON.stringify(parts),outsource:JSON.stringify(outsource),completionImages:JSON.stringify(ciUrls)};
+  if(role==='mgr')params.priority=document.getElementById('m-priority-select').value;
+
+  const r=await api(params);
+  btn.disabled=false;btn.textContent='บันทึกการอัปเดต';
+  if(r&&r.success){toast('อัปเดต '+currentId+' เรียบร้อย','success');closeTicketModal();await loadTickets();}
+}
+
+// ===== CANCEL =====
+async function doCancel(){
+  const reason=document.getElementById('m-cancel-reason').value.trim();
+  if(!reason){toast('กรุณาระบุเหตุผลการยกเลิก','error');return;}
+  if(!confirm('ยืนยันยกเลิก '+currentId+' ?\n\nเหตุผล: '+reason))return;
+  const r=await api({action:'update',id:currentId,status:'cancelled',note:'ยกเลิก: '+reason,by:'ผู้จัดการ',parts:'[]',outsource:'null',completionImages:'[]'});
+  if(r&&r.success){toast('ยกเลิก '+currentId+' เรียบร้อย','success');closeTicketModal();await loadTickets();}
+}
+
+// ===== REPORT =====
+function openReport(){
+  const now=new Date();
+  document.getElementById('r-month').value=now.getMonth()+1;
+  document.getElementById('r-year').value=now.getFullYear()+543;
+  const td=now.toISOString().split('T')[0];
+  document.getElementById('r-start').value=td;document.getElementById('r-end').value=td;
+  document.getElementById('modal-report').classList.add('open');
+}
+function closeReport(){document.getElementById('modal-report').classList.remove('open');}
+function setRType(type,btn){
+  reportType=type;
+  document.querySelectorAll('#modal-report .filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');
+  document.getElementById('r-month-sec').style.display=type==='month'?'block':'none';
+  document.getElementById('r-custom-sec').style.display=type==='custom'?'block':'none';
+}
+function exportExcel(){
+  let s,e,label;
+  if(reportType==='month'){
+    const m=parseInt(document.getElementById('r-month').value);const yBE=parseInt(document.getElementById('r-year').value);const yCE=yBE-543;
+    s=new Date(yCE,m-1,1);e=new Date(yCE,m,0,23,59,59);
+    const mn=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+    label=mn[m-1]+' '+yBE;
+  }else{
+    const sv=document.getElementById('r-start').value;const ev=document.getElementById('r-end').value;
+    if(!sv||!ev){toast('กรุณาเลือกช่วงวันที่','error');return;}
+    s=new Date(sv+'T00:00:00');e=new Date(ev+'T23:59:59');label=sv+' ถึง '+ev;
+  }
+  const f=tickets.filter(t=>{if(!t.createdAt)return false;const d=new Date(t.createdAt);return d>=s&&d<=e&&t.status!=='cancelled';});
+  if(!f.length){toast('ไม่พบข้อมูล','error');return;}
+  const tm={};
+  const addT=(n,r2,t)=>{if(!n)return;const nm=n.trim();if(!nm)return;if(!tm[nm])tm[nm]={name:nm,total:0,p1:0,p2:0,p3:0,p4:0,done:0,main:0,assist:0};tm[nm].total++;tm[nm]['p'+(t.priority||'P4').charAt(1).toLowerCase()]++;if(t.status==='done')tm[nm].done++;if(r2==='m')tm[nm].main++;else tm[nm].assist++;};
+  f.forEach(t=>{if(t.mainTech)addT(t.mainTech,'m',t);if(t.assistTech)t.assistTech.split(',').forEach(a=>addT(a.trim(),'a',t));if(!t.mainTech&&!t.assistTech)addT('ไม่ได้มอบหมาย','m',t);});
+  const os=[];
+  f.forEach(t=>(Array.isArray(t.timeline)?t.timeline:[]).forEach(item=>{if(item.outsource&&item.outsource.company)os.push({id:t.id,date:item.time?new Date(item.time).toLocaleDateString('th-TH'):'',loc:t.location||'',detail:t.detail||'',company:item.outsource.company,cost:item.outsource.cost||0});}));
+  const wb=XLSX.utils.book_new();
+  const s1=[['รายงานภาระงานช่าง'],['ช่วงเวลา: '+label],['วันที่ออก: '+new Date().toLocaleDateString('th-TH')],[],['ชื่อช่าง','งานทั้งหมด','รับผิดชอบหลัก','ช่วยงาน','P1','P2','P3','P4','ปิดแล้ว','อัตราปิด %']];
+  Object.values(tm).forEach(v=>s1.push([v.name,v.total,v.main,v.assist,v.p1,v.p2,v.p3,v.p4,v.done,v.total>0?Math.round(v.done/v.total*100)+'%':'0%']));
+  s1.push([]);s1.push(['รวม',f.length,'','',f.filter(t=>t.priority==='P1').length,f.filter(t=>t.priority==='P2').length,f.filter(t=>t.priority==='P3').length,f.filter(t=>t.priority==='P4').length,f.filter(t=>t.status==='done').length,f.length>0?Math.round(f.filter(t=>t.status==='done').length/f.length*100)+'%':'0%']);
+  const ws1=XLSX.utils.aoa_to_sheet(s1);ws1['!cols']=[{wch:22},{wch:12},{wch:14},{wch:12},{wch:8},{wch:10},{wch:8},{wch:10},{wch:10},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,ws1,'สรุปภาระงานรายช่าง');
+  const s2=[['รายละเอียด Ticket ประจำ '+label],[],['เลข Ticket','วันที่แจ้ง','แผนก','ผู้แจ้ง','สถานที่','ประเภท','รายละเอียด','Priority','สถานะ','ช่างหลัก','ช่างช่วย','ช่างภายนอก','ค่าจ้าง (บาท)','มีรูป','วันที่ปิด']];
+  f.forEach(t=>{const tl=Array.isArray(t.timeline)?t.timeline:[];const de=tl.find(i=>i.type==='done');const oe=tl.find(i=>i.outsource&&i.outsource.company);s2.push([t.id||'',t.createdAt?new Date(t.createdAt).toLocaleDateString('th-TH'):'',t.dept||'',t.reporter||'',t.location||'',t.type||'',t.detail||'',t.priority||'',SL[t.status]||t.status||'',t.mainTech||'',t.assistTech||'',oe?oe.outsource.company:'',oe?Number(oe.outsource.cost)||0:'',t.imageUrl?'มีรูป':'',de?new Date(de.time).toLocaleDateString('th-TH'):'']);});
+  const ws2=XLSX.utils.aoa_to_sheet(s2);ws2['!cols']=[{wch:12},{wch:13},{wch:13},{wch:13},{wch:15},{wch:10},{wch:28},{wch:10},{wch:14},{wch:15},{wch:18},{wch:18},{wch:12},{wch:8},{wch:13}];
+  XLSX.utils.book_append_sheet(wb,ws2,'รายละเอียด Ticket');
+  const s3=[['ค่าจ้างช่างภายนอก ประจำ '+label],[],['เลข Ticket','วันที่','สถานที่','รายละเอียด','บริษัท/ช่างภายนอก','ค่าจ้าง (บาท)']];
+  os.forEach(o=>s3.push([o.id,o.date,o.loc,o.detail,o.company,Number(o.cost)||0]));
+  s3.push([]);s3.push(['','','','','รวมค่าจ้าง',os.reduce((sum,o)=>sum+Number(o.cost||0),0)]);
+  const ws3=XLSX.utils.aoa_to_sheet(s3);ws3['!cols']=[{wch:12},{wch:13},{wch:15},{wch:28},{wch:22},{wch:15}];
+  XLSX.utils.book_append_sheet(wb,ws3,'ค่าจ้างช่างภายนอก');
+  XLSX.writeFile(wb,'รายงานภาระงาน_'+label.replace(/ /g,'_')+'.xlsx');
+  toast('ดาวน์โหลดรายงาน '+f.length+' รายการ เรียบร้อย','success');
+  closeReport();
+}
+
+// ===== UTILS =====
+function show(id){document.getElementById(id).style.display='block';}
+function hide(id){document.getElementById(id).style.display='none';}
+function toast(msg,type='success'){const t=document.getElementById('toast');t.textContent=msg;t.className='toast '+type+' show';setTimeout(()=>t.classList.remove('show'),3500);}
+
+// ===== INIT =====
+document.getElementById('dashboard-date').textContent=new Date().toLocaleDateString('th-TH',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+loadTickets();
+</script>
+</body>
+</html>
