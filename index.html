@@ -666,7 +666,7 @@ function openTicket(id){
   const isCancelled=t.status==='cancelled';
   if(!isCancelled&&(currentRole==='tech'||currentRole==='mgr')){
     const so=['inprogress:กำลังซ่อม','waiting:รออะไหล่','done:ซ่อมเสร็จ','temp:แก้ไขชั่วคราว','sub:ส่งผู้รับเหมา'];
-    const sg=so.map(s=>{const[v,l]=s.split(':');return `<div class="status-option${t.status===v?' sel-'+v:''}" onclick="selectStatus(this,'${v}')">${l}</div>`;}).join('');
+    const sg=so.map(s=>{const[v,l]=s.split(':');return `<div class="status-option${t.status===v?' sel-'+v:''}" data-val="${v}">${l}</div>`;}).join('');
     uf=`<div class="update-form">
       <div class="update-form-title">อัปเดตสถานะงาน</div>
       ${currentRole==='mgr'?`<div class="form-group" style="margin-bottom:10px"><label class="form-label">ปรับ Priority</label><select class="form-select" id="u-priority"><option value="P1" ${t.priority==='P1'?'selected':''}>P1 วิกฤต</option><option value="P2" ${t.priority==='P2'?'selected':''}>P2 เร่งด่วน</option><option value="P3" ${t.priority==='P3'?'selected':''}>P3 ปกติ</option><option value="P4" ${t.priority==='P4'?'selected':''}>P4 แผนงาน</option></select></div>`:''}
@@ -740,11 +740,21 @@ function openTicket(id){
     <div class="timeline">${tlHTML||'<div style="color:var(--muted);font-size:12px">ยังไม่มีการอัปเดต</div>'}</div>
     ${uf}${cancelHTML}`;
   document.getElementById('modal-overlay').classList.add('open');
+  // bind status option clicks หลัง render เสร็จ
+  setTimeout(()=>{
+    document.querySelectorAll('.status-option').forEach(el=>{
+      const val=el.getAttribute('data-val');
+      if(val) el.addEventListener('click',()=>selectStatus(el,val));
+    });
+  },50);
 }
 
 function toggleOutsource(cb){document.getElementById('outsource-fields').style.display=cb.checked?'block':'none';document.getElementById('outsource-toggle-label').className='outsource-toggle'+(cb.checked?' active':'');}
 function selectStatus(el,val){
-  document.querySelectorAll('.status-option').forEach(e=>e.className='status-option');
+  // รีเซ็ตทุกปุ่มในกลุ่มเดียวกัน
+  const grid=el.closest('.status-select-grid');
+  if(grid) grid.querySelectorAll('.status-option').forEach(e=>{e.className='status-option';});
+  else document.querySelectorAll('.status-option').forEach(e=>e.className='status-option');
   el.classList.add('sel-'+val);
   window._selectedStatus=val;
   // แสดงกล่องรูปส่งมอบเฉพาะเมื่อเลือก done
