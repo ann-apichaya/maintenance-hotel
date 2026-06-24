@@ -791,7 +791,9 @@ function openTicket(id){
     const pt=item.parts&&item.parts.length?'<div style="margin-top:3px;font-size:11px;color:var(--muted)">อะไหล่: '+item.parts.map(p=>p.name+(p.qty?' '+p.qty:'')).join(', ')+'</div>':'';
     const os=item.outsource&&item.outsource.company?`<div style="margin-top:3px;font-size:11px;color:var(--p2)">ช่างภายนอก: ${item.outsource.company} ${item.outsource.cost?'| ค่าจ้าง: '+Number(item.outsource.cost).toLocaleString()+' บาท':''}</div>`:'';
     const ci=(item.completionImages||[]).length?`<div class="completion-imgs">${item.completionImages.map(u=>`<div class="completion-img" onclick="window.open('${u}','_blank')"><img src="${u}" onerror="this.parentElement.style.display='none'"></div>`).join('')}</div>`:'';
-    return `<div class="timeline-item"><div class="timeline-dot ${dc}">${dl}</div><div class="timeline-content"><div class="timeline-meta">${item.time?new Date(item.time).toLocaleString('th-TH'):''} &middot; ${item.by||''}</div><div class="timeline-text" style="${item.type==='cancelled'?'color:var(--p1)':''}">${item.text||''}</div>${pt}${os}${ci}</div></div>`;
+    // แสดงชื่อช่างช่วยถ้ามี
+    const assistDisplay=item.assistTech?` + ช่างช่วย: ${item.assistTech}`:'';
+    return `<div class="timeline-item"><div class="timeline-dot ${dc}">${dl}</div><div class="timeline-content"><div class="timeline-meta">${item.time?new Date(item.time).toLocaleString('th-TH'):''} &middot; ${item.by||''}${assistDisplay}</div><div class="timeline-text" style="${item.type==='cancelled'?'color:var(--p1)':''}">${item.text||''}</div>${pt}${os}${ci}</div></div>`;
   }).join(''):`<div style="color:var(--muted);font-size:12px">ยังไม่มีการอัปเดต</div>`;
 
   // update form
@@ -912,7 +914,7 @@ async function saveUpdate(){
     }
   }
 
-  const params={action:'update',id:currentId,status:currentStatus,note,by:mainTech,mainTech,assistTech,parts:JSON.stringify(parts),outsource:JSON.stringify(outsource),completionImages:JSON.stringify(ciUrls)};
+  const params={action:'update',id:currentId,status:currentStatus,note,by:mainTech,mainTech,assistTech,parts:JSON.stringify(parts),outsource:JSON.stringify(outsource),completionImages:JSON.stringify(ciUrls),assistTechForTimeline:assistTech};
   if(role==='mgr')params.priority=document.getElementById('m-priority-select').value;
 
   const r=await api(params);
@@ -971,7 +973,26 @@ function exportExcel(){
   const ws1=XLSX.utils.aoa_to_sheet(s1);ws1['!cols']=[{wch:22},{wch:12},{wch:14},{wch:12},{wch:8},{wch:10},{wch:8},{wch:10},{wch:10},{wch:12}];
   XLSX.utils.book_append_sheet(wb,ws1,'สรุปภาระงานรายช่าง');
   const s2=[['รายละเอียด Ticket ประจำ '+label],[],['เลข Ticket','วันที่แจ้ง','แผนก','ผู้แจ้ง','สถานที่','ประเภท','รายละเอียด','Priority','สถานะ','ช่างหลัก','ช่างช่วย','ช่างภายนอก','ค่าจ้าง (บาท)','มีรูป','วันที่ปิด']];
-  f.forEach(t=>{const tl=Array.isArray(t.timeline)?t.timeline:[];const de=tl.find(i=>i.type==='done');const oe=tl.find(i=>i.outsource&&i.outsource.company);s2.push([t.id||'',t.createdAt?new Date(t.createdAt).toLocaleDateString('th-TH'):'',t.dept||'',t.reporter||'',t.location||'',t.type||'',t.detail||'',t.priority||'',SL[t.status]||t.status||'',t.mainTech||'',t.assistTech||'',oe?oe.outsource.company:'',oe?Number(oe.outsource.cost)||0:'',t.imageUrl?'มีรูป':'',de?new Date(de.time).toLocaleDateString('th-TH'):'']);});
+  f.forEach(t=>{
+  const tl=Array.isArray(t.timeline)?t.timeline:[];
+  const de=tl.find(i=>i.type==='done');
+  const oe=tl.find(i=>i.outsource&&i.outsource.company);
+  // ดึงชื่อช่างจาก timeline: ใช้จาก mainTech ก่อน ถ้าไม่มีให้ดึงจาก by ของ entry done หรือ update ล่าสุด
+  const techEntries=tl.filter(i=>i.type==='done'||i.type==='update');
+  const lastTech=techEntries.length?techEntries[techEntries.length-1].by:'';
+  const mainTech=t.mainTech||lastTech||'';
+  const assistTech=t.assistTech||'';
+  s2.push([
+    t.id||'',
+    t.createdAt?new Date(t.createdAt).toLocaleDateString('th-TH'):'',
+    t.dept||'',t.reporter||'',t.location||'',t.type||'',t.detail||'',
+    t.priority||'',SL[t.status]||t.status||'',
+    mainTech,assistTech,
+    oe?oe.outsource.company:'',oe?Number(oe.outsource.cost)||0:'',
+    t.imageUrl?'มีรูป':'',
+    de?new Date(de.time).toLocaleDateString('th-TH'):''
+  ]);
+});
   const ws2=XLSX.utils.aoa_to_sheet(s2);ws2['!cols']=[{wch:12},{wch:13},{wch:13},{wch:13},{wch:15},{wch:10},{wch:28},{wch:10},{wch:14},{wch:15},{wch:18},{wch:18},{wch:12},{wch:8},{wch:13}];
   XLSX.utils.book_append_sheet(wb,ws2,'รายละเอียด Ticket');
   const s3=[['ค่าจ้างช่างภายนอก ประจำ '+label],[],['เลข Ticket','วันที่','สถานที่','รายละเอียด','บริษัท/ช่างภายนอก','ค่าจ้าง (บาท)']];
